@@ -1,0 +1,56 @@
+name: Windows Installer
+
+# Genera AGTech-1.0.0.msi y AGTech-1.0.0.exe en un runner Windows de GitHub.
+# No necesitas un PC Windows: pulsa "Run workflow" y descarga el artefacto.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Asegurar WiX Toolset 3.x
+        shell: pwsh
+        run: |
+          $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3.*\bin\candle.exe" `
+            -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $found) {
+            choco install wixtoolset --version=3.14.1 -y --no-progress
+            $found = Get-ChildItem "C:\Program Files (x86)\WiX Toolset v3.*\bin\candle.exe" `
+              -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if (-not $found) { throw "WiX Toolset 3.x no encontrado" }
+          $found.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Compilar MSI y EXE
+        shell: pwsh
+        run: .\gradlew.bat --no-daemon packageMsi packageExe
+
+      - name: Subir instaladores
+        uses: actions/upload-artifact@v4
+        with:
+          name: AGTech-Windows
+          path: |
+            build/compose/binaries/main/msi/*.msi
+            build/compose/binaries/main/exe/*.exe
+          if-no-files-found: error
