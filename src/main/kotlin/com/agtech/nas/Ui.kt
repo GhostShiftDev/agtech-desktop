@@ -351,7 +351,7 @@ fun HomeView(state: AppState, onNavigate: (Screen) -> Unit) {
 @Composable
 fun FilesView(state: AppState) {
     val f = state.filesState
-    LaunchedEffect(Unit) { if (f.items.isEmpty()) state.loadFiles() }
+    LaunchedEffect(Unit) { if (f.items.isEmpty() && !f.loading) state.loadFiles() }
 
     Column(Modifier.fillMaxSize().background(AppBackground).padding(16.dp)) {
         AppHeader(
@@ -362,6 +362,25 @@ fun FilesView(state: AppState) {
             }
         )
         Spacer(Modifier.height(12.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Origen:", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            FILE_ROOTS.forEach { root ->
+                val selected = f.root == root
+                FilterChip(
+                    selected = selected,
+                    onClick = { if (!selected) state.setFilesRoot(root) },
+                    label = { Text(root) },
+                    leadingIcon = {
+                        Icon(
+                            if (root == "Karen") Icons.Filled.Storage else Icons.Filled.VideoLibrary,
+                            null, modifier = Modifier.size(16.dp)
+                        )
+                    }
+                )
+            }
+        }
+        Spacer(Modifier.height(8.dp))
 
         if (f.error != null) { ErrorBanner(f.error) { state.loadFiles() }; Spacer(Modifier.height(8.dp)) }
         if (f.loading) { LinearProgressIndicator(Modifier.fillMaxWidth(), color = Cyan400); Spacer(Modifier.height(8.dp)) }
@@ -429,17 +448,14 @@ fun AppsView(state: AppState) {
     val list = state.apps?.apps ?: emptyList()
     LaunchedEffect(Unit) { if (state.apps == null) state.refresh() }
     Column(Modifier.fillMaxSize().background(AppBackground).padding(16.dp)) {
-        AppHeader("Accesos", "${list.size} aplicaciones")
+        AppHeader("Accesos", "${list.size} aplicaciones · se abren dentro de la app")
         Spacer(Modifier.height(12.dp))
         if (list.isEmpty()) EmptyState("Sin accesos configurados")
         else LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             items(list) { app ->
                 Card(colors = CardDefaults.cardColors(containerColor = Navy800)) {
                     Row(
-                        Modifier.fillMaxWidth().clickable {
-                            val u = app.wan ?: app.lan ?: ""
-                            if (u.isNotBlank()) openInBrowser(if (u.startsWith("http")) u else "https://$u")
-                        }.padding(14.dp),
+                        Modifier.fillMaxWidth().clickable { state.openApp(app) }.padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Box(Modifier.size(36.dp).clip(CircleShape).background(GlassCard), contentAlignment = Alignment.Center) {
@@ -449,7 +465,10 @@ fun AppsView(state: AppState) {
                             Text(app.name, style = MaterialTheme.typography.titleSmall, color = TextPrimary)
                             Text(app.category, style = MaterialTheme.typography.labelSmall, color = TextMuted)
                         }
-                        Icon(Icons.Filled.OpenInNew, "Abrir", tint = Cyan400, modifier = Modifier.size(18.dp))
+                        if (state.hasCredential(app.id)) {
+                            Icon(Icons.Filled.Lock, "Acceso automático", tint = Mint300, modifier = Modifier.size(16.dp))
+                        }
+                        Icon(Icons.Filled.OpenInBrowser, "Abrir en la app", tint = Cyan400, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -461,9 +480,114 @@ fun AppsView(state: AppState) {
 @Composable
 fun SettingsView(state: AppState) {
     var url by remember { mutableStateOf(state.config.baseUrl()) }
-    Column(Modifier.fillMaxSize().background(AppBackground).padding(16.dp)) {
+    var credApp by remember { mutableStateOf<AppItem?>(null) }
+    var nasPass by remember { mutableStateOf("") }
+    var showNasPass by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        if (state.updateInfo == null && !state.updateChecking) state.checkUpdates()
+    }
+
+    Column(
+        Modifier.fillMaxSize().background(AppBackground)
+            .verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
         AppHeader("Ajustes", state.config.user().ifBlank { "NAS" })
-        Spacer(Modifier.height(12.dp))
+
+        // ---------------------------------------------------------- actualizaciones
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Navy800)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.SystemUpdate, null, tint = Cyan400, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Actualizaciones", style = MaterialTheme.typography.titleSmall, color = Cyan400, modifier = Modifier.weight(1f))
+                    Text("v$APP_VERSION", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+
+                val info = state.updateInfo
+                when {
+                    state.updateChecking -> Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Cyan400)
+                        Text("Comprobando…", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                    }
+
+                    info == null -> Text(
+                        "Pulsa «Buscar actualización» para consultar GitHub Releases.",
+                        style = MaterialTheme.typography.bodySmall, color = TextMuted
+                    )
+
+                    info.available -> {
+                        Text(
+                            "Nueva versión disponible: v${info.latestVersion}",
+                            style = MaterialTheme.typography.bodyMedium, color = Mint300
+                        )
+                        if (info.notes.isNotBlank()) {
+                            Text(
+                                info.notes.take(1200),
+                                style = MaterialTheme.typography.labelSmall, color = TextMuted
+                            )
+                        }
+                        if (info.assetName.isNotBlank()) {
+                            Text(
+                                "Instalador: ${info.assetName}" +
+                                    if (info.assetSize > 0) " (${fmtBytes(info.assetSize.toDouble())})" else "",
+                                style = MaterialTheme.typography.labelSmall, color = TextMuted
+                            )
+                        }
+                    }
+
+                    else -> Text(
+                        "Tienes la última versión (v${info.latestVersion.ifBlank { APP_VERSION }}).",
+                        style = MaterialTheme.typography.bodySmall, color = Mint300
+                    )
+                }
+
+                if (state.downloadingUpdate) {
+                    ProgressBar(state.downloadProgress, Cyan400)
+                    Text(
+                        "Descargando… ${(state.downloadProgress * 100).toInt()}%",
+                        style = MaterialTheme.typography.labelSmall, color = TextMuted
+                    )
+                }
+
+                state.updateError?.let {
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = Danger)
+                }
+
+                state.downloadedUpdate?.let { file ->
+                    Text("Descargado: ${file.absolutePath}", style = MaterialTheme.typography.labelSmall, color = Mint300)
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { state.checkUpdates() },
+                        enabled = !state.updateChecking && !state.downloadingUpdate
+                    ) { Text("Buscar actualización") }
+
+                    if (info?.available == true && state.downloadedUpdate == null) {
+                        Button(
+                            onClick = { state.downloadUpdate() },
+                            enabled = !state.downloadingUpdate,
+                            colors = ButtonDefaults.buttonColors(containerColor = Cyan400, contentColor = Navy900)
+                        ) { Text(if (state.downloadingUpdate) "Descargando…" else "Descargar e instalar") }
+                    }
+
+                    if (state.downloadedUpdate != null) {
+                        Button(
+                            onClick = { state.openDownloadedUpdate() },
+                            colors = ButtonDefaults.buttonColors(containerColor = Mint300, contentColor = Navy900)
+                        ) { Text("Instalar ahora") }
+                        OutlinedButton(onClick = { state.openDownloadFolder() }) { Text("Abrir carpeta") }
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------- conexión
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Navy800)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Conexión", style = MaterialTheme.typography.titleSmall, color = Cyan400)
@@ -479,7 +603,92 @@ fun SettingsView(state: AppState) {
                 }
             }
         }
-        Spacer(Modifier.height(12.dp))
+
+        // ---------------------------------------------------------- accesos / credenciales
+        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Navy800)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Accesos y contraseñas", style = MaterialTheme.typography.titleSmall, color = Cyan400)
+                Text(
+                    "Los accesos se abren dentro de la app y rellenan el formulario automáticamente. " +
+                        "Si un servicio usa otras credenciales, cámbialas aquí.",
+                    style = MaterialTheme.typography.bodySmall, color = TextMuted
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Switch(
+                        checked = state.useNasCredentialsForAll,
+                        onCheckedChange = { state.useNasCredentialsForAll = it }
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Usar mis credenciales del NAS en todos", style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                        Text(
+                            "Se usan en los accesos sin credenciales propias.",
+                            style = MaterialTheme.typography.labelSmall, color = TextMuted
+                        )
+                    }
+                }
+
+                val apps = state.apps?.apps.orEmpty().filter { !it.wan.isNullOrBlank() }
+                if (apps.isEmpty()) {
+                    Text("Sin accesos cargados todavía.", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                } else {
+                    HorizontalDivider(color = Navy700)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            nasPass, { nasPass = it },
+                            label = {
+                                Text(
+                                    if (state.nasPasswordSet) "Contraseña del NAS (guardada)"
+                                    else "Contraseña del NAS para autorrelleno"
+                                )
+                            },
+                            singleLine = true,
+                            visualTransformation = if (showNasPass) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = { showNasPass = !showNasPass }) {
+                            Icon(
+                                if (showNasPass) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                "Mostrar/ocultar", tint = TextMuted, modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Button(
+                            onClick = { state.saveNasPassword(nasPass); nasPass = "" },
+                            enabled = nasPass.isNotBlank()
+                        ) { Text("Guardar") }
+                    }
+                    HorizontalDivider(color = Navy700)
+                    apps.forEach { app ->
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(
+                                if (state.hasCredential(app.id)) Icons.Filled.Lock else Icons.Filled.LockOpen,
+                                null,
+                                tint = if (state.hasCredential(app.id)) Mint300 else TextMuted,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Column(Modifier.weight(1f)) {
+                                Text(app.name, style = MaterialTheme.typography.bodySmall, color = TextPrimary)
+                                val explicit = state.config.appCredentials()[app.id]
+                                Text(
+                                    when {
+                                        explicit != null -> "Credencial propia: ${explicit.login}"
+                                        state.credentials[app.id] != null -> "Credencial del NAS: ${state.credentials[app.id]?.login}"
+                                        state.useNasCredentialsForAll && state.config.loginPassword().isNotBlank() ->
+                                            "Usa tu usuario del NAS"
+                                        else -> "Sin credenciales"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall, color = TextMuted,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            TextButton(onClick = { credApp = app }) { Text("Editar") }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---------------------------------------------------------- sesión
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Navy800)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Sesión", style = MaterialTheme.typography.titleSmall, color = Cyan400)
@@ -492,6 +701,57 @@ fun SettingsView(state: AppState) {
             }
         }
     }
+
+    credApp?.let { app ->
+        CredentialDialog(app, state) { credApp = null }
+    }
+}
+
+@Composable
+private fun CredentialDialog(app: AppItem, state: AppState, onClose: () -> Unit) {
+    val existing = state.config.appCredentials()[app.id] ?: state.credentials[app.id] ?: AppCredential()
+    var login by remember(app.id) { mutableStateOf(existing.login) }
+    var pass by remember(app.id) { mutableStateOf(existing.password) }
+    var showPass by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Credenciales · ${app.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Se guardan cifradas en este equipo. Si el servicio no las tiene configuradas, el formulario se rellenará igualmente.",
+                    style = MaterialTheme.typography.bodySmall, color = TextMuted
+                )
+                OutlinedTextField(login, { login = it }, label = { Text("Usuario o correo") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    pass, { pass = it }, label = { Text("Contraseña") }, singleLine = true,
+                    visualTransformation = if (showPass) androidx.compose.ui.text.input.VisualTransformation.None else PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TextButton(onClick = { showPass = !showPass }) {
+                    Text(if (showPass) "Ocultar contraseña" else "Mostrar contraseña")
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    state.saveAppCredential(app.id, login, pass)
+                    onClose()
+                },
+                enabled = login.isNotBlank() && pass.isNotBlank()
+            ) { Text("Guardar") }
+        },
+        dismissButton = {
+            Row {
+                if (state.config.appCredentials().containsKey(app.id)) {
+                    TextButton(onClick = { state.removeAppCredential(app.id); onClose() }) { Text("Borrar", color = Danger) }
+                }
+                TextButton(onClick = onClose) { Text("Cancelar") }
+            }
+        }
+    )
 }
 
 // ------------------------------------------------------------------ Detail

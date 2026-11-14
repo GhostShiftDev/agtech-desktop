@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "com.agtech"
-version = "1.0.0"
+version = "1.1.0"
 
 kotlin {
     jvmToolchain(21)
@@ -28,16 +28,28 @@ dependencies {
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
     implementation("com.squareup.retrofit2:retrofit:2.11.0")
     implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
+
+    // Navegador embebido para abrir los accesos dentro de la app (Chromium/CEF)
+    implementation("io.github.kevinnzou:compose-webview-multiplatform:2.0.3")
+    implementation("dev.datlag:kcef:2024.04.20.4")
 }
 
 compose.desktop {
     application {
         mainClass = "com.agtech.nas.MainKt"
 
+        // Necesario para el navegador embebido (Chromium/CEF, que usa AWT internamente)
+        jvmArgs += listOf(
+            "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
+            "--add-opens=java.desktop/java.awt.peer=ALL-UNNAMED",
+            "--add-opens=java.desktop/sun.java2d=ALL-UNNAMED",
+            "-Dfile.encoding=UTF-8"
+        )
+
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
             packageName = "AGTech"
-            packageVersion = "1.0.0"
+            packageVersion = "1.1.0"
             description = "AGTech NAS - cliente de escritorio"
             vendor = "AGTech"
 

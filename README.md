@@ -15,10 +15,10 @@ archivos, Docker, detalle de contenedores con estadísticas y logs, accesos y aj
 |---|---|
 | **Login** | URL del NAS, emparejamiento por código e inicio de sesión usuario/contraseña. |
 | **Inicio** | CPU, RAM, temperatura, uptime, memoria/swap, servicios (latencia real), avisos del NAS y discos con SMART. |
-| **Archivos** | Navegador de carpetas del NAS (raíz + ruta), tamaños y reintento ante errores. |
+| **Files** | Navegador de carpetas del NAS con selector de origen (`Grabaciones` / `Karen`), tamaños y vuelta atrás. Si un disco está OFFLINE cae automáticamente a `Grabaciones`. |
 | **Docker** | Lista de contenedores con estado; detalle con CPU/RAM/red, logs en vivo y Start/Stop/Restart. |
-| **Accesos** | Apps/servicios publicados por el NAS; se abren en el navegador del sistema. |
-| **Ajustes** | Cambio de URL, refresco y cierre de sesión. |
+| **Accesos** | Apps/servicios publicados por el NAS; **se abren dentro de la app** con navegador Chromium embebido (CEF) y autorrelleno de credenciales. |
+| **Ajustes** | Cambio de URL, **actualizaciones dentro de la app** (GitHub Releases), credenciales por acceso y cierre de sesión. |
 
 La sesión se guarda **cifrada** con AES-256-GCM:
 
@@ -98,8 +98,8 @@ O manualmente:
 Resultado:
 
 ```
-build\compose\binaries\main\msi\AGTech-1.0.0.msi
-build\compose\binaries\main\exe\AGTech-1.0.0.exe
+build\compose\binaries\main\msi\AGTech-1.1.0.msi
+build\compose\binaries\main\exe\AGTech-1.1.0.exe
 ```
 
 También se puede crear una **distribución portable** (carpeta con runtime propio, sin instalar):
@@ -131,7 +131,9 @@ git remote add origin https://github.com/TU_USUARIO/agtech-desktop.git
 git push -u origin main
 ```
 
-> El workflow también se dispara al publicar un tag `v*` (por ejemplo `git tag v1.0.0 && git push --tags`).
+> El workflow también se dispara al publicar un tag `v*` (por ejemplo `git tag v1.1.0 && git push --tags`).
+> En ese caso, además del artefacto, se publica una **Release** de GitHub con el `.msi` y el `.exe`
+> adjuntos. De esa Release se alimenta el actualizador de **Ajustes → Actualizaciones**.
 
 ### Firma de código (opcional, recomendado)
 
@@ -147,7 +149,7 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a AGTech-
 ## 5. Empaquetado en Linux (referencia)
 
 ```bash
-./gradlew packageDeb      # genera build/compose/binaries/main/deb/agtech_1.0.0_amd64.deb
+./gradlew packageDeb      # genera build/compose/binaries/main/deb/agtech_1.1.0_amd64.deb
 ./gradlew createDistributable
 ```
 
@@ -195,8 +197,23 @@ sudo apt-get install -y binutils
 
 ### La pantalla **Archivos** devuelve HTTP 503
 
-No es un fallo de la app: el disco raíz configurado (p. ej. `Karen`) está **OFFLINE** en el NAS.
-La UI muestra el error y el botón **Reintentar**. Cuando el disco vuelve, la lista carga sola.
+El disco `Karen` está **OFFLINE** en el NAS. La app arranca en `Grabaciones` (online) y, si eliges
+`Karen`, muestra el aviso y cae automáticamente a `Grabaciones`. `Sistema` no es una raíz de
+ficheros válida para `nas-api`.
+
+### El navegador embebido no arranca
+
+La primera vez descarga Chromium (~150 MB) en `%LOCALAPPDATA%\AGTech\cef-bundle` (Windows) o
+`~/.agtech/cef-bundle` (Linux). Si falla, la propia pantalla ofrece **Reintentar** y
+**Abrir en navegador externo**. En algunos equipos Windows puede pedir reiniciar la app una vez
+tras la descarga.
+
+### Actualizaciones
+
+**Ajustes → Buscar actualización** consulta la última Release de
+`https://github.com/GhostShiftDev/agtech-desktop/releases`. Si hay una versión mayor, se descarga
+el instalador dentro de la app (a `Descargas`) y se puede ejecutar desde ahí. También se puede
+publicar una Release manualmente subiendo el `.msi`/`.exe`.
 
 ### `packageMsi` falla en Windows
 
@@ -221,6 +238,9 @@ agtech-desktop/
     └── kotlin/com/agtech/nas/
         ├── Main.kt                      # Ventana, scaffold, navegación inferior
         ├── Ui.kt                        # Vistas: login, inicio, archivos, docker, apps, ajustes, detalle
+        ├── WebViewScreen.kt             # Navegador embebido + autorrelleno de login
+        ├── BrowserEngine.kt             # Descarga/inicialización de Chromium (CEF)
+        ├── Updates.kt                   # Comprobación y descarga de actualizaciones (GitHub Releases)
         ├── AppState.kt                  # Estado y lógica (corrutinas en Dispatchers.Swing/IO)
         ├── Api.kt                       # Retrofit + OkHttp + Moshi
         ├── Models.kt                    # DTOs de la API
@@ -232,6 +252,7 @@ agtech-desktop/
 
 - Kotlin 2.2.20 · Compose Multiplatform 1.9.3 · Material 3
 - Retrofit 2.11 + OkHttp 4.12 + Moshi 1.15
+- `compose-webview-multiplatform` 2.0.3 + KCEF/JCEF (Chromium 137)
 - kotlinx-coroutines-swing 1.9
 - Gradle 8.13 · JDK 21
 
@@ -245,6 +266,7 @@ agtech-desktop/
 | `GET /system` | CPU, RAM, swap, temperatura, red, uptime |
 | `GET /disks` | Discos, uso y SMART |
 | `GET /apps`, `GET /apps/status` | Accesos publicados y estado de servicios |
+| `GET /apps/credentials` | Credenciales de autorrelleno (las sirve el NAS, no se incluyen en la app) |
 | `GET /events` | Avisos/eventos del NAS |
 | `GET /files`, `/files/download`, `POST /files/mkdir`, `DELETE /files` | Navegación y operaciones de archivos |
 | `GET /docker/containers` | Lista de contenedores |
@@ -264,6 +286,10 @@ Verificado con el NAS real (no simulado):
 - Panel con CPU, RAM, temperatura, uptime, **11/11 servicios** y discos.
 - **49 contenedores** Docker listados.
 - Detalle de contenedor con logs reales (servidor Minecraft Bedrock) y acciones.
+- **Accesos dentro de la app**: navegador Chromium (CEF) embebido, navegación, recarga y vuelta.
+- **Auto-login verificado** contra Immich (`/auth/login`): el formulario se rellena y se envía solo.
+- **Archivos**: `Grabaciones` lista 15 elementos; `Karen` (OFFLINE) cae a `Grabaciones` sin 503 fatal.
+- **Ajustes → Actualizaciones**: consulta la Release de GitHub y descarga el instalador con progreso.
 - Sesión persistida cifrada y arranque directo en el panel.
 - Distribución portable generada y ejecutada (`build/compose/binaries/main/app/AGTech/bin/AGTech`).
 - Proyecto Android original intacto: `settings.gradle.kts` incluye solo `:app`.

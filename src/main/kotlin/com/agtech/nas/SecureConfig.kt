@@ -99,6 +99,46 @@ class SecureConfig {
         props.remove("token"); props.remove("service_token"); props.remove("user"); save()
     }
 
+    // -------- contraseña del NAS (solo para autorrellenar los accesos) --------
+    fun loginPassword(): String = getEnc("login_password") ?: ""
+
+    fun saveLoginPassword(password: String) {
+        if (password.isBlank()) return
+        putEnc("login_password", password)
+    }
+
+    // -------- credenciales por acceso (override local) --------
+    /**
+     * Credenciales configuradas por el usuario para un acceso concreto.
+     * Se guardan cifradas y tienen prioridad sobre las del servidor.
+     */
+    fun appCredentials(): Map<String, AppCredential> {
+        val out = mutableMapOf<String, AppCredential>()
+        props.stringPropertyNames()
+            .filter { it.startsWith("appcred.") && it.endsWith(".login") }
+            .forEach { k ->
+                val id = k.removePrefix("appcred.").removeSuffix(".login")
+                val login = getEnc(k).orEmpty()
+                val pass = getEnc("appcred.$id.password").orEmpty()
+                if (login.isNotBlank() && pass.isNotBlank()) {
+                    out[id] = AppCredential(login, pass)
+                }
+            }
+        return out
+    }
+
+    fun saveAppCredential(appId: String, login: String, password: String) {
+        if (appId.isBlank()) return
+        putEnc("appcred.$appId.login", login.trim())
+        putEnc("appcred.$appId.password", password)
+    }
+
+    fun removeAppCredential(appId: String) {
+        props.remove("appcred.$appId.login")
+        props.remove("appcred.$appId.password")
+        save()
+    }
+
     fun clearAll() {
         props.clear(); save()
     }

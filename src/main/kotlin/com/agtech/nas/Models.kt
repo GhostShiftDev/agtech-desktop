@@ -69,6 +69,13 @@ data class AppItem(
 )
 data class AppsResponse(val apps: List<AppItem> = emptyList())
 
+// ------------------------------- /apps/credentials
+data class AppCredential(val login: String = "", val password: String = "")
+data class CredentialsResponse(
+    val credentials: Map<String, AppCredential> = emptyMap(),
+    val count: Int = 0
+)
+
 // ------------------------------- /docker
 data class Container(
     val id: String = "",

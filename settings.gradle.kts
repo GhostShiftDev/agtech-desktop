@@ -10,6 +10,8 @@ dependencyResolutionManagement {
     repositories {
         mavenCentral()
         google()
+        // Necesario para KCEF / JCEF (navegador embebido)
+        maven("https://jogamp.org/deployment/maven")
     }
 }
 

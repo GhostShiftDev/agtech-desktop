@@ -63,7 +63,7 @@ fun Root(state: AppState) {
         return
     }
 
-    val showNav = state.screen != Screen.DETAIL
+    val showNav = state.screen != Screen.DETAIL && state.screen != Screen.WEB
 
     Scaffold(
         bottomBar = {
@@ -97,6 +97,7 @@ fun Root(state: AppState) {
                 Screen.APPS -> AppsView(state)
                 Screen.SETTINGS -> SettingsView(state)
                 Screen.DETAIL -> DetailView(state)
+                Screen.WEB -> WebViewScreen(state)
                 Screen.MEDIA -> HomeView(state, onNavigate = { state.navigate(it) })
                 Screen.LOGIN -> LoginView(state)
             }

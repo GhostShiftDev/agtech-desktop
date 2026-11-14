@@ -22,6 +22,7 @@ interface NasApi {
     @GET("system") suspend fun system(): Response<SystemInfo>
     @GET("disks") suspend fun disks(): Response<DisksResponse>
     @GET("apps") suspend fun apps(): Response<AppsResponse>
+    @GET("apps/credentials") suspend fun credentials(): Response<CredentialsResponse>
     @GET("apps/status") suspend fun appsStatus(): Response<ServicesStatusResponse>
     @GET("events") suspend fun events(): Response<EventsResponse>
 

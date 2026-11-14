@@ -1,7 +1,8 @@
 name: Windows Installer
 
-# Genera AGTech-1.0.0.msi y AGTech-1.0.0.exe en un runner Windows de GitHub.
+# Genera AGTech-1.1.0.msi y AGTech-1.1.0.exe en un runner Windows de GitHub.
 # No necesitas un PC Windows: pulsa "Run workflow" y descarga el artefacto.
+# En un tag v* además publica una Release con los instaladores (auto-update).
 
 on:
   workflow_dispatch:
@@ -10,6 +11,9 @@ on:
       - main
     tags:
       - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   windows:
@@ -54,3 +58,14 @@ jobs:
             build/compose/binaries/main/msi/*.msi
             build/compose/binaries/main/exe/*.exe
           if-no-files-found: error
+
+      - name: Publicar release (tags v*)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: AGTech NAS ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            build/compose/binaries/main/msi/*.msi
+            build/compose/binaries/main/exe/*.exe
+          fail_on_unmatched_files: true
