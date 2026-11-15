@@ -9,7 +9,7 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 
 // Se puede sobrescribir con -Dagtech.version=x.y.z (útil para probar el actualizador).
-val APP_VERSION: String = System.getProperty("agtech.version")?.takeIf { it.isNotBlank() } ?: "1.1.0"
+val APP_VERSION: String = System.getProperty("agtech.version")?.takeIf { it.isNotBlank() } ?: "1.2.0"
 
 data class UpdateInfo(
     val available: Boolean = false,

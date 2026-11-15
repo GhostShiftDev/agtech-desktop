@@ -65,7 +65,10 @@ La app abre una ventana de 1180×820. Introduce la URL del NAS y tus credenciale
 código de emparejamiento.
 
 > **Nota sobre credenciales:** no se incluyen contraseñas en el repositorio. Usa la cuenta del
-> NAS o el código de emparejamiento generado por el servidor.
+> NAS o el código de emparejamiento generado por el servidor. El auto-login de Accesos se
+> alimenta de `credentials.json` en el NAS (modo 600), que la app pide con su JWT al arrancar
+> y, si falta alguna, al abrir ese acceso. Añadir o resetear una credencial en el servidor no
+> requiere reinstalar la app.
 
 ---
 
@@ -98,8 +101,8 @@ O manualmente:
 Resultado:
 
 ```
-build\compose\binaries\main\msi\AGTech-1.1.0.msi
-build\compose\binaries\main\exe\AGTech-1.1.0.exe
+build\compose\binaries\main\msi\AGTech-1.2.0.msi
+build\compose\binaries\main\exe\AGTech-1.2.0.exe
 ```
 
 También se puede crear una **distribución portable** (carpeta con runtime propio, sin instalar):
@@ -131,7 +134,7 @@ git remote add origin https://github.com/TU_USUARIO/agtech-desktop.git
 git push -u origin main
 ```
 
-> El workflow también se dispara al publicar un tag `v*` (por ejemplo `git tag v1.1.0 && git push --tags`).
+> El workflow también se dispara al publicar un tag `v*` (por ejemplo `git tag v1.2.0 && git push --tags`).
 > En ese caso, además del artefacto, se publica una **Release** de GitHub con el `.msi` y el `.exe`
 > adjuntos. De esa Release se alimenta el actualizador de **Ajustes → Actualizaciones**.
 
@@ -149,7 +152,7 @@ signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a AGTech-
 ## 5. Empaquetado en Linux (referencia)
 
 ```bash
-./gradlew packageDeb      # genera build/compose/binaries/main/deb/agtech_1.1.0_amd64.deb
+./gradlew packageDeb      # genera build/compose/binaries/main/deb/agtech_1.2.0_amd64.deb
 ./gradlew createDistributable
 ```
 
@@ -287,7 +290,10 @@ Verificado con el NAS real (no simulado):
 - **49 contenedores** Docker listados.
 - Detalle de contenedor con logs reales (servidor Minecraft Bedrock) y acciones.
 - **Accesos dentro de la app**: navegador Chromium (CEF) embebido, navegación, recarga y vuelta.
-- **Auto-login verificado** contra Immich (`/auth/login`): el formulario se rellena y se envía solo.
+- **Auto-login verificado** contra Immich (`/auth/login`) y, en navegador real, contra Nextcloud,
+  Chatwoot y Pelican; Portainer validado por API. El formulario se rellena y se envía solo.
+- **Credenciales al día sin reiniciar**: si al abrir un acceso aún no hay credencial, la app
+  vuelve a pedir `GET /apps/credentials` y las aplica en esa misma sesión.
 - **Archivos**: `Grabaciones` lista 15 elementos; `Karen` (OFFLINE) cae a `Grabaciones` sin 503 fatal.
 - **Ajustes → Actualizaciones**: consulta la Release de GitHub y descarga el instalador con progreso.
 - Sesión persistida cifrada y arranque directo en el panel.

@@ -72,6 +72,7 @@ class AppState {
     var webTarget by mutableStateOf<WebTarget?>(null); private set
     var autoLoginEnabled by mutableStateOf(true)
     var credentials by mutableStateOf<Map<String, AppCredential>>(emptyMap()); private set
+    private val credentialFetchTried = mutableSetOf<String>()
     var useNasCredentialsForAll by mutableStateOf(true)
     var nasPasswordSet by mutableStateOf(config.loginPassword().isNotBlank()); private set
 
@@ -276,6 +277,19 @@ class AppState {
         if (raw.isBlank()) {
             postNotice("«${app.name}» no tiene URL pública configurada")
             return
+        }
+        // Si este acceso aún no tiene credencial explícita (ni local ni del
+        // servidor), pídeselas al NAS ahora: así las añadidas o reseteadas en
+        // el servidor entran sin reiniciar la app. Una vez por acceso y sesión.
+        val hasExplicit = config.appCredentials()[app.id] != null || credentials[app.id] != null
+        if (!hasExplicit && credentialFetchTried.add(app.id)) {
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { client.api().credentials() } }
+                    .getOrNull()
+                    ?.takeIf { it.isSuccessful }
+                    ?.body()?.credentials
+                    ?.let { credentials = mergeCredentials(it) }
+            }
         }
         val url = if (raw.startsWith("http", true)) raw else "https://$raw"
         webTarget = WebTarget(app.id, app.name, url)
