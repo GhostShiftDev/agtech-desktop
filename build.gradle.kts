@@ -49,7 +49,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb)
             packageName = "AGTech"
-            packageVersion = "1.1.0"
+            packageVersion = "1.2.0"
             description = "AGTech NAS - cliente de escritorio"
             vendor = "AGTech"
 
