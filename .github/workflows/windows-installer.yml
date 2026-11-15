@@ -1,6 +1,6 @@
 name: Windows Installer
 
-# Genera AGTech-1.1.0.msi y AGTech-1.1.0.exe en un runner Windows de GitHub.
+# Genera los instaladores AGTech-<versión>.msi y .exe en un runner Windows de GitHub.
 # No necesitas un PC Windows: pulsa "Run workflow" y descarga el artefacto.
 # En un tag v* además publica una Release con los instaladores (auto-update).
 
@@ -58,6 +58,21 @@ jobs:
             build/compose/binaries/main/msi/*.msi
             build/compose/binaries/main/exe/*.exe
           if-no-files-found: error
+
+      - name: Limpiar assets de versiones anteriores
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' 2>/dev/null | while read -r n; do
+            [ -z "$n" ] && continue
+            if [ "$n" != "AGTech-$V.msi" ] && [ "$n" != "AGTech-$V.exe" ]; then
+              echo "Borrando asset antiguo: $n"
+              gh release delete-asset "$GITHUB_REF_NAME" "$n" -y || true
+            fi
+          done
 
       - name: Publicar release (tags v*)
         if: startsWith(github.ref, 'refs/tags/')
